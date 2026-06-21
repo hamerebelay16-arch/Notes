@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -16,9 +15,10 @@ import {
 } from 'react-native';
 
 import { AudioRecorderSection } from '@/components/audio/audio-recorder';
-import { CategoryPicker } from '@/components/notes/category-picker';
+import { ActionChip } from '@/components/notes/note-card';
+import { TagPicker } from '@/components/notes/tag-picker';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useCategories } from '@/context/categories-context';
 import { useNotes } from '@/context/notes-context';
 import { useAppTheme } from '@/hooks/use-app-theme';
@@ -29,13 +29,14 @@ export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const theme = useAppTheme();
-  const { updateNote, deleteNote, pinNote, unpinNote, archiveNote } = useNotes();
+  const { updateNote, deleteNote, pinNote, unpinNote, archiveNote, unarchiveNote } = useNotes();
   const { categories } = useCategories();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [isPinned, setIsPinned] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
   const [audioUri, setAudioUri] = useState<string | undefined>();
   const [audioDurationMs, setAudioDurationMs] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
@@ -55,19 +56,14 @@ export default function NoteDetailScreen() {
       }
       setTitle(note.title);
       setBody(note.body);
-      setSelectedTags(note.tags);
+      setTags(note.tags);
       setIsPinned(note.isPinned);
+      setIsArchived(note.isArchived);
       setAudioUri(note.audioUri);
       setAudioDurationMs(note.audioDurationMs);
       setLoading(false);
     })();
   }, [id, router]);
-
-  const handleToggleTag = (name: string) => {
-    setSelectedTags((current) =>
-      current.includes(name) ? current.filter((t) => t !== name) : [...current, name]
-    );
-  };
 
   const handleSave = async () => {
     if (!id) return;
@@ -76,7 +72,7 @@ export default function NoteDetailScreen() {
       await updateNote(id, {
         title: title.trim() || 'Untitled',
         body: body.trim(),
-        tags: selectedTags,
+        tags,
         audioUri,
         audioDurationMs,
       });
@@ -90,16 +86,13 @@ export default function NoteDetailScreen() {
   };
 
   const handleTogglePin = async () => {
-    if (!id) return;
+    if (!id || isArchived) return;
     if (isPinned) {
       await unpinNote(id);
       setIsPinned(false);
     } else {
       await pinNote(id);
       setIsPinned(true);
-    }
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
@@ -118,6 +111,15 @@ export default function NoteDetailScreen() {
         },
       },
     ]);
+  };
+
+  const handleUnarchive = async () => {
+    if (!id) return;
+    await unarchiveNote(id);
+    setIsArchived(false);
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   };
 
   const handleDelete = () => {
@@ -165,7 +167,7 @@ export default function NoteDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <ScreenHeader
-        title="Note"
+        title={isArchived ? 'Archived' : 'Note'}
         onBack={() => router.back()}
         rightAction={{ label: saving ? '…' : 'Save', onPress: handleSave, disabled: saving }}
       />
@@ -177,36 +179,33 @@ export default function NoteDetailScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          <View style={styles.actions}>
-            <Pressable
-              onPress={handleTogglePin}
-              style={[
-                styles.actionChip,
-                {
-                  backgroundColor: isPinned ? theme.tintMuted : theme.surface,
-                  borderColor: isPinned ? theme.tint : theme.border,
-                },
-              ]}>
-              <Ionicons
-                name={isPinned ? 'pin' : 'pin-outline'}
-                size={16}
-                color={isPinned ? theme.tint : theme.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.actionLabel,
-                  { color: isPinned ? theme.tint : theme.textSecondary },
-                ]}>
-                {isPinned ? 'Pinned' : 'Pin'}
+          {isArchived && (
+            <View style={[styles.archivedBanner, { backgroundColor: theme.tintMuted }]}>
+              <Text style={[styles.archivedText, { color: theme.tint }]}>
+                This note is archived and hidden from your main list.
               </Text>
-            </Pressable>
+            </View>
+          )}
 
-            <Pressable
-              onPress={handleArchive}
-              style={[styles.actionChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Ionicons name="archive-outline" size={16} color={theme.textSecondary} />
-              <Text style={[styles.actionLabel, { color: theme.textSecondary }]}>Archive</Text>
-            </Pressable>
+          <View style={styles.actions}>
+            {!isArchived && (
+              <ActionChip
+                label={isPinned ? 'Pinned' : 'Pin'}
+                icon={isPinned ? 'pin' : 'pin-outline'}
+                active={isPinned}
+                onPress={handleTogglePin}
+              />
+            )}
+
+            {isArchived ? (
+              <ActionChip
+                label="Unarchive"
+                icon="arrow-undo-outline"
+                onPress={handleUnarchive}
+              />
+            ) : (
+              <ActionChip label="Archive" icon="archive-outline" onPress={handleArchive} />
+            )}
           </View>
 
           <TextInput
@@ -227,11 +226,7 @@ export default function NoteDetailScreen() {
             textAlignVertical="top"
           />
 
-          <CategoryPicker
-            categories={categoryNames}
-            selected={selectedTags}
-            onToggle={handleToggleTag}
-          />
+          <TagPicker tags={tags} suggestions={categoryNames} onChange={setTags} />
 
           <AudioRecorderSection
             audioUri={audioUri}
@@ -266,22 +261,19 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
     paddingBottom: Spacing.xl,
   },
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
+  archivedBanner: {
+    borderRadius: 12,
+    padding: Spacing.md,
   },
-  actionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    borderWidth: 1,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 2,
-  },
-  actionLabel: {
+  archivedText: {
     fontSize: 14,
     fontWeight: '600',
+    lineHeight: 20,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
   titleInput: {
     fontSize: 28,

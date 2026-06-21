@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { AudioRecorderSection } from '@/components/audio/audio-recorder';
-import { CategoryPicker } from '@/components/notes/category-picker';
+import { TagPicker } from '@/components/notes/tag-picker';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Spacing } from '@/constants/theme';
 import { useCategories } from '@/context/categories-context';
@@ -28,19 +28,13 @@ export default function NewNoteScreen() {
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [pendingAudio, setPendingAudio] = useState<{ uri: string; durationMs: number } | null>(
     null
   );
   const [saving, setSaving] = useState(false);
 
   const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
-
-  const handleToggleTag = (name: string) => {
-    setSelectedTags((current) =>
-      current.includes(name) ? current.filter((t) => t !== name) : [...current, name]
-    );
-  };
 
   const handleSave = async () => {
     if (!title.trim() && !body.trim() && !pendingAudio) {
@@ -53,7 +47,7 @@ export default function NewNoteScreen() {
       const note = await createNote({
         title: title.trim() || 'Untitled',
         body: body.trim(),
-        tags: selectedTags,
+        tags,
       });
 
       if (pendingAudio) {
@@ -107,11 +101,7 @@ export default function NewNoteScreen() {
             textAlignVertical="top"
           />
 
-          <CategoryPicker
-            categories={categoryNames}
-            selected={selectedTags}
-            onToggle={handleToggleTag}
-          />
+          <TagPicker tags={tags} suggestions={categoryNames} onChange={setTags} />
 
           <AudioRecorderSection
             audioUri={pendingAudio?.uri}

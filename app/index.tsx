@@ -14,7 +14,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyNotes } from '@/components/notes/empty-notes';
+import { FilterTabs } from '@/components/notes/filter-tabs';
 import { NoteSection } from '@/components/notes/note-section';
+import { TagFilterBar } from '@/components/notes/tag-filter-bar';
 import { Fab } from '@/components/ui/fab';
 import { SearchBar } from '@/components/ui/search-bar';
 import { Spacing } from '@/constants/theme';
@@ -22,10 +24,15 @@ import { useNotes } from '@/context/notes-context';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import type { Note } from '@/types/note';
 import {
+  filterByTag,
+  getAllUsedTags,
+  getArchivedNotes,
+  getNotesForFilter,
   getPinnedNotes,
   getRecentNotes,
   getSearchResults,
   isActiveNote,
+  type NoteFilter,
 } from '@/utils/note-filters';
 
 export default function HomeScreen() {
@@ -34,6 +41,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { notes, loading, refreshNotes } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<NoteFilter>('all');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -42,14 +51,42 @@ export default function HomeScreen() {
   );
 
   const isSearching = searchQuery.trim().length > 0;
-  const activeNotes = useMemo(() => notes.filter(isActiveNote), [notes]);
 
-  const pinnedNotes = useMemo(() => getPinnedNotes(notes), [notes]);
-  const recentNotes = useMemo(() => getRecentNotes(notes), [notes]);
-  const searchResults = useMemo(
-    () => getSearchResults(notes, searchQuery),
-    [notes, searchQuery]
+  const filterCounts = useMemo(
+    () => ({
+      all: notes.filter(isActiveNote).length,
+      pinned: getPinnedNotes(notes).length,
+      archived: getArchivedNotes(notes).length,
+    }),
+    [notes]
   );
+
+  const baseForFilter = useMemo(() => getNotesForFilter(notes, filter), [notes, filter]);
+
+  const availableTags = useMemo(() => getAllUsedTags(baseForFilter), [baseForFilter]);
+
+  const tagFiltered = useMemo(
+    () => filterByTag(baseForFilter, selectedTag),
+    [baseForFilter, selectedTag]
+  );
+
+  const displayNotes = useMemo(() => {
+    if (!isSearching) return tagFiltered;
+    return getSearchResults(tagFiltered, searchQuery);
+  }, [tagFiltered, searchQuery, isSearching]);
+
+  const pinnedNotes = useMemo(
+    () => (filter === 'all' && !selectedTag && !isSearching ? getPinnedNotes(notes) : []),
+    [notes, filter, selectedTag, isSearching]
+  );
+
+  const recentNotes = useMemo(
+    () => (filter === 'all' && !selectedTag && !isSearching ? getRecentNotes(notes) : []),
+    [notes, filter, selectedTag, isSearching]
+  );
+
+  const showSectionedView =
+    filter === 'all' && !selectedTag && !isSearching && displayNotes.length > 0;
 
   const handleCreate = () => {
     if (Platform.OS !== 'web') {
@@ -66,8 +103,28 @@ export default function HomeScreen() {
     router.push('/categories');
   };
 
-  const showEmpty = !loading && activeNotes.length === 0 && !isSearching;
-  const showNoResults = !loading && isSearching && searchResults.length === 0;
+  const handleFilterChange = (next: NoteFilter) => {
+    setFilter(next);
+    setSelectedTag(null);
+  };
+
+  const handleTagPress = (tag: string) => {
+    setSelectedTag(tag);
+    if (filter === 'archived') {
+      // keep archived filter
+    } else if (filter === 'pinned') {
+      // keep pinned filter
+    }
+  };
+
+  const emptyVariant = useMemo(() => {
+    if (isSearching) return 'search' as const;
+    if (selectedTag) return 'tag' as const;
+    return filter;
+  }, [isSearching, selectedTag, filter]);
+
+  const showEmpty = !loading && displayNotes.length === 0;
+  const hasAnyNotes = notes.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -85,13 +142,21 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {!loading && activeNotes.length > 0 && (
-          <Text style={[styles.count, { color: theme.textSecondary }]}>
-            {activeNotes.length} {activeNotes.length === 1 ? 'note' : 'notes'}
-          </Text>
+        {hasAnyNotes && (
+          <FilterTabs value={filter} onChange={handleFilterChange} counts={filterCounts} />
         )}
 
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} />
+        {(hasAnyNotes || isSearching) && (
+          <SearchBar value={searchQuery} onChangeText={setSearchQuery} />
+        )}
+
+        {availableTags.length > 0 && (
+          <TagFilterBar
+            tags={availableTags}
+            selected={selectedTag}
+            onSelect={setSelectedTag}
+          />
+        )}
       </View>
 
       {loading ? (
@@ -99,35 +164,49 @@ export default function HomeScreen() {
           <ActivityIndicator size="large" color={theme.tint} />
         </View>
       ) : showEmpty ? (
-        <EmptyNotes />
+        <EmptyNotes variant={emptyVariant} query={searchQuery} tag={selectedTag ?? undefined} />
       ) : (
         <ScrollView
-          contentContainerStyle={[
-            styles.list,
-            { paddingBottom: insets.bottom + 100 },
-          ]}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           {isSearching ? (
+            <NoteSection
+              title={`Results (${displayNotes.length})`}
+              notes={displayNotes}
+              onNotePress={handleNotePress}
+              onTagPress={handleTagPress}
+            />
+          ) : showSectionedView ? (
             <>
               <NoteSection
-                title={`Results (${searchResults.length})`}
-                notes={searchResults}
+                title="Pinned"
+                notes={pinnedNotes}
                 onNotePress={handleNotePress}
+                onTagPress={handleTagPress}
               />
-              {showNoResults && (
-                <View style={styles.noResults}>
-                  <Text style={[styles.noResultsText, { color: theme.textSecondary }]}>
-                    No notes match &ldquo;{searchQuery.trim()}&rdquo;
-                  </Text>
-                </View>
-              )}
+              <NoteSection
+                title="Recent"
+                notes={recentNotes}
+                onNotePress={handleNotePress}
+                onTagPress={handleTagPress}
+              />
             </>
           ) : (
-            <>
-              <NoteSection title="Pinned" notes={pinnedNotes} onNotePress={handleNotePress} />
-              <NoteSection title="Recent" notes={recentNotes} onNotePress={handleNotePress} />
-            </>
+            <NoteSection
+              title={
+                filter === 'pinned'
+                  ? 'Pinned'
+                  : filter === 'archived'
+                    ? 'Archived'
+                    : selectedTag
+                      ? `Tag: ${selectedTag}`
+                      : 'Notes'
+              }
+              notes={displayNotes}
+              onNotePress={handleNotePress}
+              onTagPress={handleTagPress}
+            />
           )}
         </ScrollView>
       )}
@@ -144,7 +223,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   headerTop: {
     flexDirection: 'row',
@@ -167,9 +246,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.8,
   },
-  count: {
-    fontSize: 15,
-  },
   categoriesBtn: {
     width: 44,
     height: 44,
@@ -188,13 +264,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
     gap: Spacing.xl,
-  },
-  noResults: {
-    paddingVertical: Spacing.xl,
-    alignItems: 'center',
-  },
-  noResultsText: {
-    fontSize: 16,
-    textAlign: 'center',
   },
 });

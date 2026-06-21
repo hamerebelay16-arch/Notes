@@ -9,9 +9,10 @@ interface NoteSectionProps {
   title: string;
   notes: Note[];
   onNotePress: (note: Note) => void;
+  onTagPress?: (tag: string) => void;
 }
 
-export function NoteSection({ title, notes, onNotePress }: NoteSectionProps) {
+export function NoteSection({ title, notes, onNotePress, onTagPress }: NoteSectionProps) {
   const theme = useAppTheme();
 
   if (notes.length === 0) return null;
@@ -21,7 +22,12 @@ export function NoteSection({ title, notes, onNotePress }: NoteSectionProps) {
       <Text style={[styles.title, { color: theme.textSecondary }]}>{title}</Text>
       <View style={styles.notes}>
         {notes.map((note) => (
-          <NoteCard key={note.id} note={note} onPress={() => onNotePress(note)} />
+          <NoteCard
+            key={note.id}
+            note={note}
+            onPress={() => onNotePress(note)}
+            onTagPress={onTagPress}
+          />
         ))}
       </View>
     </View>
