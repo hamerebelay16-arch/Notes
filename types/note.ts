@@ -1,9 +1,23 @@
+export interface NoteAttachment {
+  id: string;
+  uri: string;
+  type: 'image' | 'file';
+  name: string;
+}
+
 export interface Note {
   id: string;
   title: string;
   body: string;
   audioUri?: string;
   audioDurationMs?: number;
+  /** Offline speech-to-text result from voice recording */
+  transcript?: string;
+  /** AI-generated short summary (3–5 lines) */
+  summary?: string;
+  /** AI-generated bullet key points */
+  keyPoints?: string[];
+  attachments?: NoteAttachment[];
   tags: string[];
   isPinned: boolean;
   isArchived: boolean;
@@ -14,6 +28,10 @@ export interface Note {
 export type CreateNoteInput = Pick<Note, 'title' | 'body'> & {
   audioUri?: string;
   audioDurationMs?: number;
+  transcript?: string;
+  summary?: string;
+  keyPoints?: string[];
+  attachments?: NoteAttachment[];
   tags?: string[];
 };
 

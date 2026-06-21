@@ -23,7 +23,14 @@ interface NoteCardProps {
 
 export function NoteCard({ note, onPress, onTagPress }: NoteCardProps) {
   const theme = useAppTheme();
-  const preview = note.body.trim() || (note.audioUri ? 'Voice note' : 'No content');
+  const hasAttachments = Boolean(note.attachments?.length);
+  const preview = note.body.trim()
+    ? note.body.trim()
+    : hasAttachments
+    ? 'Attachment note'
+    : note.audioUri
+    ? 'Voice note'
+    : 'No content';
   const hasAudio = Boolean(note.audioUri);
   const hasTags = note.tags.length > 0;
 
@@ -56,6 +63,11 @@ export function NoteCard({ note, onPress, onTagPress }: NoteCardProps) {
           {hasAudio && (
             <View style={[styles.badge, { backgroundColor: theme.voiceMuted }]}>
               <Ionicons name="mic" size={12} color={theme.voice} />
+            </View>
+          )}
+          {hasAttachments && (
+            <View style={[styles.badge, { backgroundColor: theme.tintMuted }]}>
+              <Ionicons name="image-outline" size={12} color={theme.tint} />
             </View>
           )}
         </View>

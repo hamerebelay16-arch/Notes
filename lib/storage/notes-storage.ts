@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { CreateNoteInput, Note, UpdateNoteInput } from '@/types/note';
+import type { CreateNoteInput, Note, NoteAttachment, UpdateNoteInput } from '@/types/note';
 
 const STORAGE_KEY = '@mynotes/notes';
 
@@ -16,6 +16,12 @@ export function normalizeNote(raw: Record<string, unknown>): Note {
     body: (raw.body as string) ?? '',
     audioUri: raw.audioUri as string | undefined,
     audioDurationMs: raw.audioDurationMs as number | undefined,
+    transcript: raw.transcript as string | undefined,
+    summary: raw.summary as string | undefined,
+    keyPoints: Array.isArray(raw.keyPoints) ? (raw.keyPoints as string[]) : undefined,
+    attachments: Array.isArray(raw.attachments)
+      ? (raw.attachments as NoteAttachment[])
+      : undefined,
     tags: Array.isArray(raw.tags) ? (raw.tags as string[]) : [],
     isPinned: Boolean(raw.isPinned),
     isArchived: Boolean(raw.isArchived),
@@ -59,6 +65,10 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
     body: input.body.trim(),
     audioUri: input.audioUri,
     audioDurationMs: input.audioDurationMs,
+    transcript: input.transcript,
+    summary: input.summary,
+    keyPoints: input.keyPoints,
+    attachments: input.attachments,
     tags: input.tags ?? [],
     isPinned: false,
     isArchived: false,

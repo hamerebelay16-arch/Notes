@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 
 import { AudioRecorderSection } from '@/components/audio/audio-recorder';
+import { AiPanel } from '@/components/ai/ai-panel';
+import { TitleSuggestionModal } from '@/components/ai/title-suggestion-modal';
 import { ActionChip } from '@/components/notes/note-card';
 import { TagPicker } from '@/components/notes/tag-picker';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -23,6 +25,7 @@ import { useCategories } from '@/context/categories-context';
 import { useNotes } from '@/context/notes-context';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { deleteAudioFile, persistRecording } from '@/lib/storage/audio-storage';
+import { suggestTitleAfterSave } from '@/lib/ai/title-on-save';
 import { getNoteById } from '@/lib/storage/notes-storage';
 
 export default function NoteDetailScreen() {
@@ -39,8 +42,13 @@ export default function NoteDetailScreen() {
   const [isArchived, setIsArchived] = useState(false);
   const [audioUri, setAudioUri] = useState<string | undefined>();
   const [audioDurationMs, setAudioDurationMs] = useState<number | undefined>();
+  const [transcript, setTranscript] = useState<string | undefined>();
+  const [summary, setSummary] = useState<string | undefined>();
+  const [keyPoints, setKeyPoints] = useState<string[] | undefined>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [titleSuggestion, setTitleSuggestion] = useState<string | null>(null);
+  const [showTitleSuggestion, setShowTitleSuggestion] = useState(false);
 
   const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
 
@@ -61,6 +69,9 @@ export default function NoteDetailScreen() {
       setIsArchived(note.isArchived);
       setAudioUri(note.audioUri);
       setAudioDurationMs(note.audioDurationMs);
+      setTranscript(note.transcript);
+      setSummary(note.summary);
+      setKeyPoints(note.keyPoints);
       setLoading(false);
     })();
   }, [id, router]);
@@ -69,20 +80,47 @@ export default function NoteDetailScreen() {
     if (!id) return;
     setSaving(true);
     try {
+      const savedTitle = title.trim() || 'Untitled';
       await updateNote(id, {
-        title: title.trim() || 'Untitled',
+        title: savedTitle,
         body: body.trim(),
         tags,
         audioUri,
         audioDurationMs,
+        transcript: transcript?.trim() || undefined,
+        summary: summary?.trim() || undefined,
+        keyPoints: keyPoints?.length ? keyPoints : undefined,
       });
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+
+      const suggested = await suggestTitleAfterSave(body, transcript, savedTitle);
+      if (suggested) {
+        setTitleSuggestion(suggested);
+        setShowTitleSuggestion(true);
+        return;
+      }
+
       router.replace('/');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAcceptSuggestedTitle = async (nextTitle: string) => {
+    if (id) {
+      await updateNote(id, { title: nextTitle.trim() });
+    }
+    setShowTitleSuggestion(false);
+    setTitleSuggestion(null);
+    router.replace('/');
+  };
+
+  const handleKeepCurrentTitle = () => {
+    setShowTitleSuggestion(false);
+    setTitleSuggestion(null);
+    router.replace('/');
   };
 
   const handleTogglePin = async () => {
@@ -154,6 +192,7 @@ export default function NoteDetailScreen() {
     }
     setAudioUri(undefined);
     setAudioDurationMs(undefined);
+    setTranscript(undefined);
   };
 
   if (loading) {
@@ -235,11 +274,33 @@ export default function NoteDetailScreen() {
             onClear={handleClearAudio}
           />
 
+          <AiPanel
+            body={body}
+            transcript={transcript}
+            audioUri={audioUri}
+            summary={summary}
+            keyPoints={keyPoints}
+            onTranscriptChange={setTranscript}
+            onSummaryChange={(nextSummary, nextKeyPoints) => {
+              setSummary(nextSummary);
+              setKeyPoints(nextKeyPoints);
+            }}
+            onTitleGenerated={setTitle}
+          />
+
           <Pressable onPress={handleDelete} style={[styles.deleteBtn, { borderColor: theme.border }]}>
             <Text style={[styles.deleteLabel, { color: theme.danger }]}>Delete note</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <TitleSuggestionModal
+        visible={showTitleSuggestion}
+        suggestedTitle={titleSuggestion ?? ''}
+        onAccept={handleAcceptSuggestedTitle}
+        onKeepCurrent={handleKeepCurrentTitle}
+        onDismiss={handleKeepCurrentTitle}
+      />
     </View>
   );
 }
