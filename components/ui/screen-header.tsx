@@ -18,10 +18,10 @@ interface ScreenHeaderProps {
   onBack?: () => void;
   rightAction?: ActionItem;
   secondaryAction?: ActionItem;
-  tagAction?: ActionItem;
+  editToggle?: { editing: boolean; onPress: () => void };
 }
 
-export function ScreenHeader({ title, onBack, rightAction, secondaryAction, tagAction }: ScreenHeaderProps) {
+export function ScreenHeader({ title, onBack, rightAction, secondaryAction, editToggle }: ScreenHeaderProps) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
 
@@ -49,13 +49,13 @@ export function ScreenHeader({ title, onBack, rightAction, secondaryAction, tagA
         </Text>
 
         <View style={styles.rightActions}>
-          {tagAction && (
-            <Pressable
-              onPress={tagAction.onPress}
-              disabled={tagAction.disabled}
-              style={[styles.actionBtn, tagAction.disabled && styles.disabled]}
-              hitSlop={8}>
-              <Ionicons name="pricetag-outline" size={20} color={theme.tint} />
+          {editToggle && (
+            <Pressable onPress={editToggle.onPress} style={styles.actionBtn} hitSlop={8}>
+              <Ionicons
+                name={editToggle.editing ? 'eye-outline' : 'create-outline'}
+                size={22}
+                color={theme.tint}
+              />
             </Pressable>
           )}
           {secondaryAction && (
@@ -87,13 +87,21 @@ export function ScreenHeader({ title, onBack, rightAction, secondaryAction, tagA
               onPress={rightAction.onPress}
               disabled={rightAction.disabled}
               style={[styles.actionBtn, rightAction.disabled && styles.disabled]}>
-              <Text
-                style={[
-                  styles.actionLabel,
-                  { color: rightAction.destructive ? theme.danger : theme.tint },
-                ]}>
-                {rightAction.label}
-              </Text>
+              {rightAction.icon ? (
+                <Ionicons
+                  name={rightAction.icon}
+                  size={22}
+                  color={rightAction.destructive ? theme.danger : theme.tint}
+                />
+              ) : (
+                <Text
+                  style={[
+                    styles.actionLabel,
+                    { color: rightAction.destructive ? theme.danger : theme.tint },
+                  ]}>
+                  {rightAction.label}
+                </Text>
+              )}
             </Pressable>
           ) : (
             <View style={styles.backPlaceholder} />

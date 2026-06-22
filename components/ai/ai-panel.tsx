@@ -24,6 +24,7 @@ interface AiPanelProps {
   onTranscriptChange: (transcript: string) => void;
   onSummaryChange: (summary: string, keyPoints: string[]) => void;
   onTitleGenerated: (title: string) => void;
+  onReplaceBody?: (text: string) => void;
 }
 
 export function AiPanel({
@@ -33,6 +34,7 @@ export function AiPanel({
   keyPoints,
   onSummaryChange,
   onTitleGenerated,
+  onReplaceBody,
 }: AiPanelProps) {
   const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
@@ -118,6 +120,26 @@ export function AiPanel({
                     </View>
                   ))}
                 </View>
+              )}
+              {onReplaceBody && (
+                <Pressable
+                  onPress={() => {
+                    Alert.alert(
+                      'Replace note text',
+                      'This will replace your current note body with the summary. Continue?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Replace', onPress: () => { onReplaceBody(summary.trim()); setExpanded(false); } },
+                      ]
+                    );
+                  }}
+                  style={({ pressed }) => [
+                    styles.replaceBtn,
+                    { backgroundColor: theme.tintMuted, borderColor: theme.tint, opacity: pressed ? 0.7 : 1 },
+                  ]}>
+                  <Ionicons name="swap-horizontal-outline" size={14} color={theme.tint} />
+                  <Text style={[styles.replaceBtnLabel, { color: theme.tint }]}>Replace text with summary</Text>
+                </Pressable>
               )}
             </View>
           ) : null}
@@ -251,6 +273,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+  },
+  replaceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  replaceBtnLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   hint: {
     fontSize: 12,

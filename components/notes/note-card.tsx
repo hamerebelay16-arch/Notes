@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -20,9 +21,11 @@ import Animated, {
 import { Radius, Shadow, Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useNotes } from '@/context/notes-context';
+import { useCategories } from '@/context/categories-context';
 import type { Note } from '@/types/note';
 import { formatRelativeDate } from '@/utils/format-date';
 import { useState } from 'react';
+import { MarkdownBody } from '@/components/ui/markdown-body';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -35,8 +38,10 @@ interface NoteCardProps {
 
 export function NoteCard({ note: initialNote, onPress, onTagPress, onDeleted }: NoteCardProps) {
   const theme = useAppTheme();
-  const { pinNote, unpinNote, archiveNote, unarchiveNote, deleteNote, getNote } = useNotes();
+  const { pinNote, unpinNote, archiveNote, unarchiveNote, deleteNote, getNote, updateNote } = useNotes();
+  const { categories } = useCategories();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [categoryMenuVisible, setCategoryMenuVisible] = useState(false);
 
   // Use live note from context so pin state updates immediately
   const note = getNote(initialNote.id) ?? initialNote;
@@ -91,6 +96,11 @@ export function NoteCard({ note: initialNote, onPress, onTagPress, onDeleted }: 
     }
   };
 
+  const handleCategorySelect = async (categoryName: string | null) => {
+    setCategoryMenuVisible(false);
+    await updateNote(note.id, { category: categoryName ?? undefined });
+  };
+
   const hasRecordings = Boolean(note.audioUri || (note.audioRecordings && note.audioRecordings.length > 0));
 
   return (
@@ -130,21 +140,11 @@ export function NoteCard({ note: initialNote, onPress, onTagPress, onDeleted }: 
           </View>
         </View>
 
-        {note.tags && note.tags.length > 0 && (
-          <View style={styles.tagsRow}>
-            {note.tags.map((tag) => (
-              <Pressable
-                key={tag}
-                onPress={() => onTagPress?.(tag)}
-                style={[
-                  styles.tagChip,
-                  { backgroundColor: theme.tintMuted, borderColor: theme.tint },
-                ]}>
-                <Text style={[styles.tagText, { color: theme.tint }]} numberOfLines={1}>
-                  {tag}
-                </Text>
-              </Pressable>
-            ))}
+        {note.body.trim().length > 0 && (
+          <View style={styles.bodyPreview} pointerEvents="none">
+            <MarkdownBody fontSize={13} numberOfLines={2}>
+              {note.body.trim().slice(0, 120)}
+            </MarkdownBody>
           </View>
         )}
 
@@ -174,7 +174,50 @@ export function NoteCard({ note: initialNote, onPress, onTagPress, onDeleted }: 
               onPress={handleArchive}
             />
             <MenuOption icon="share-outline" label="Share" onPress={handleShare} />
+            <MenuOption icon="folder-outline" label="Category" onPress={() => { setMenuVisible(false); setCategoryMenuVisible(true); }} />
             <MenuOption icon="trash-outline" label="Delete" onPress={handleDelete} destructive />
+          </View>
+        </Pressable>
+      </Modal>
+      <Modal
+        visible={categoryMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCategoryMenuVisible(false)}>
+        <Pressable style={styles.overlay} onPress={() => setCategoryMenuVisible(false)}>
+          <View style={[styles.menu, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.menuTitle, { color: theme.textSecondary }]}>Move to Category</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              <MenuOption
+                icon="add-circle-outline"
+                label="Create new category"
+                onPress={() => {
+                  setCategoryMenuVisible(false);
+                  Alert.prompt(
+                    'New Category',
+                    'Enter a name for the new category',
+                    async (name) => {
+                      if (name?.trim()) {
+                        await updateNote(note.id, { category: name.trim() });
+                      }
+                    }
+                  );
+                }}
+              />
+              <MenuOption
+                icon="close-circle-outline"
+                label="No Category"
+                onPress={() => handleCategorySelect(null)}
+              />
+              {categories.map((cat) => (
+                <MenuOption
+                  key={cat.id}
+                  icon={note.category === cat.name ? 'checkmark-circle' : 'folder-outline'}
+                  label={cat.name}
+                  onPress={() => handleCategorySelect(cat.name)}
+                />
+              ))}
+            </ScrollView>
           </View>
         </Pressable>
       </Modal>
@@ -287,6 +330,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  bodyPreview: {
+    overflow: 'hidden',
+    maxHeight: 44,
+  },
   date: {
     fontSize: 13,
     fontWeight: '500',
@@ -336,23 +383,6 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-    marginTop: Spacing.xs - 2,
-    marginBottom: Spacing.xs - 2,
-  },
-  tagChip: {
-    borderWidth: 1,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 1,
-  },
-  tagText: {
-    fontSize: 11,
     fontWeight: '600',
   },
 });

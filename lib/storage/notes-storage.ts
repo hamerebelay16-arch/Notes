@@ -42,7 +42,7 @@ export function normalizeNote(raw: Record<string, unknown>): Note {
     attachments: Array.isArray(raw.attachments)
       ? (raw.attachments as NoteAttachment[])
       : undefined,
-    tags: Array.isArray(raw.tags) ? (raw.tags as string[]) : [],
+    category: raw.category as string | undefined,
     isPinned: Boolean(raw.isPinned),
     isArchived: Boolean(raw.isArchived),
     createdAt: raw.createdAt as string,
@@ -90,7 +90,7 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
     summary: input.summary,
     keyPoints: input.keyPoints,
     attachments: input.attachments,
-    tags: input.tags ?? [],
+    category: input.category,
     isPinned: false,
     isArchived: false,
     createdAt: now,
@@ -112,7 +112,7 @@ export async function updateNote(id: string, input: UpdateNoteInput): Promise<No
     ...notes[index],
     ...input,
     title: input.title !== undefined ? input.title.trim() : notes[index].title,
-    body: input.body !== undefined ? input.body.trim() : notes[index].body,
+    body: input.body !== undefined ? input.body : notes[index].body,
     updatedAt: new Date().toISOString(),
   };
 
@@ -142,6 +142,3 @@ export async function unarchiveNote(id: string): Promise<Note | null> {
   return updateNote(id, { isArchived: false });
 }
 
-export async function updateNoteTags(id: string, tags: string[]): Promise<Note | null> {
-  return updateNote(id, { tags });
-}

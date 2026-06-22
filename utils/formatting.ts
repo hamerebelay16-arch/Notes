@@ -1,7 +1,7 @@
 export function insertFormatting(
   text: string,
   selection: { start: number; end: number },
-  type: 'bold' | 'italic' | 'underline' | 'checklist' | 'bullet'
+  type: 'bold' | 'italic' | 'checklist' | 'bullet'
 ): { nextText: string; nextSelection: { start: number; end: number } } {
   const { start, end } = selection;
   const selectedText = text.substring(start, end);
@@ -18,15 +18,11 @@ export function insertFormatting(
       insertBefore = '*';
       insertAfter = '*';
       break;
-    case 'underline':
-      insertBefore = '<u>';
-      insertAfter = '</u>';
-      break;
     case 'checklist':
       insertBefore = '\n- [ ] ';
       break;
     case 'bullet':
-      insertBefore = '\n• ';
+      insertBefore = '\n- ';
       break;
   }
 
@@ -40,11 +36,5 @@ export function insertFormatting(
   const newStart = start + insertBefore.length;
   const newEnd = newStart + selectedText.length;
 
-  return {
-    nextText,
-    nextSelection: {
-      start: newStart,
-      end: newEnd,
-    },
-  };
+  return { nextText, nextSelection: { start: newStart, end: newEnd } };
 }

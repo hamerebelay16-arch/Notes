@@ -20,9 +20,10 @@ interface TagInputModalProps {
   initialValue?: string;
   onConfirm: (tag: string | null) => void;
   onDismiss: () => void;
+  mode?: 'tag' | 'category';
 }
 
-export function TagInputModal({ visible, initialValue = '', onConfirm, onDismiss }: TagInputModalProps) {
+export function TagInputModal({ visible, initialValue = '', onConfirm, onDismiss, mode = 'tag' }: TagInputModalProps) {
   const theme = useAppTheme();
   const { categories } = useCategories();
   const [value, setValue] = useState(initialValue);
@@ -53,9 +54,9 @@ export function TagInputModal({ visible, initialValue = '', onConfirm, onDismiss
       onRequestClose={handleDismiss}>
       <Pressable style={styles.overlay} onPress={handleDismiss}>
         <Pressable style={[styles.dialog, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.title, { color: theme.text }]}>Add Tag</Text>
+          <Text style={[styles.title, { color: theme.text }]}>{mode === 'category' ? 'New Category' : 'Add Tag'}</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Enter a tag for this note
+            {mode === 'category' ? 'Enter a category name' : 'Enter a tag for this note'}
           </Text>
 
           <View style={[styles.inputRow, { backgroundColor: theme.background, borderColor: theme.border }]}>

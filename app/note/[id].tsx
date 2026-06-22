@@ -6,8 +6,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from 'react-native';
@@ -15,17 +17,15 @@ import {
 import { AudioRecorderSection } from '@/components/audio/audio-recorder';
 import { AiPanel } from '@/components/ai/ai-panel';
 import { TitleSuggestionModal } from '@/components/ai/title-suggestion-modal';
-import { SingleTagPicker } from '@/components/notes/single-tag-picker';
-import { TagInputModal } from '@/components/ui/tag-input-modal';
+import { CategoryPicker } from '@/components/notes/category-picker';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { FormattingToolbar } from '@/components/ui/formatting-toolbar';
+import { MarkdownBody } from '@/components/ui/markdown-body';
 import { Spacing } from '@/constants/theme';
 import { useNotes } from '@/context/notes-context';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { deleteAudioFile, persistRecording } from '@/lib/storage/audio-storage';
 import { suggestTitleAfterSave } from '@/lib/ai/title-on-save';
 import { getNoteById } from '@/lib/storage/notes-storage';
-import { insertFormatting } from '@/utils/formatting';
 import type { AudioRecording } from '@/types/note';
 
 export default function NoteDetailScreen() {
@@ -36,20 +36,19 @@ export default function NoteDetailScreen() {
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [bodySelection, setBodySelection] = useState({ start: 0, end: 0 });
   const bodyInputRef = useRef<TextInput>(null);
-  const [tag, setTag] = useState<string | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [audioRecordings, setAudioRecordings] = useState<AudioRecording[]>([]);
   const [transcript, setTranscript] = useState<string | undefined>();
   const [summary, setSummary] = useState<string | undefined>();
   const [keyPoints, setKeyPoints] = useState<string[] | undefined>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [titleSuggestion, setTitleSuggestion] = useState<string | null>(null);
   const [showTitleSuggestion, setShowTitleSuggestion] = useState(false);
-  const [tagModalVisible, setTagModalVisible] = useState(false);
 
-  const originalRef = useRef({ title: '', body: '', tag: null as string | null });
+  const originalRef = useRef({ title: '', body: '', category: null as string | null });
 
   useEffect(() => {
     (async () => {
@@ -63,19 +62,19 @@ export default function NoteDetailScreen() {
       }
       setTitle(note.title);
       setBody(note.body);
-      setTag(note.tags[0] ?? null);
+      setCategory(note.category ?? null);
       setAudioRecordings(note.audioRecordings ?? []);
       setTranscript(note.transcript);
       setSummary(note.summary);
       setKeyPoints(note.keyPoints);
-      originalRef.current = { title: note.title, body: note.body, tag: note.tags[0] ?? null };
+      originalRef.current = { title: note.title, body: note.body, category: note.category ?? null };
       setLoading(false);
     })();
   }, [id, router]);
 
   const hasUnsavedChanges = () => {
     const orig = originalRef.current;
-    return title !== orig.title || body !== orig.body || tag !== orig.tag;
+    return title !== orig.title || body !== orig.body || category !== orig.category;
   };
 
   const handleBack = () => {
@@ -90,15 +89,6 @@ export default function NoteDetailScreen() {
     }
   };
 
-  const handleTagAction = () => setTagModalVisible(true);
-
-  const handleApplyFormatting = (type: 'bold' | 'italic' | 'underline' | 'checklist' | 'bullet') => {
-    const { nextText, nextSelection } = insertFormatting(body, bodySelection, type);
-    setBody(nextText);
-    setBodySelection(nextSelection);
-    setTimeout(() => bodyInputRef.current?.focus(), 50);
-  };
-
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
@@ -107,13 +97,13 @@ export default function NoteDetailScreen() {
       await updateNote(id, {
         title: savedTitle,
         body: body.trim(),
-        tags: tag ? [tag] : [],
+        category: category ?? undefined,
         audioRecordings,
         transcript: transcript?.trim() || undefined,
         summary: summary?.trim() || undefined,
         keyPoints: keyPoints?.length ? keyPoints : undefined,
       });
-      originalRef.current = { title: savedTitle, body: body.trim(), tag };
+      originalRef.current = { title: savedTitle, body: body.trim(), category };
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -199,7 +189,7 @@ export default function NoteDetailScreen() {
       <ScreenHeader
         title="Note"
         onBack={handleBack}
-        tagAction={{ onPress: handleTagAction }}
+        editToggle={{ editing, onPress: () => setEditing((v) => !v) }}
         secondaryAction={{ icon: 'trash-outline', onPress: handleDelete, destructive: true }}
         rightAction={{ label: saving ? '…' : 'Save', onPress: handleSave, disabled: saving }}
       />
@@ -217,22 +207,34 @@ export default function NoteDetailScreen() {
             placeholder="Title"
             placeholderTextColor={theme.placeholder}
             style={[styles.titleInput, { color: theme.text }]}
+            editable={editing}
           />
 
-          <TextInput
-            ref={bodyInputRef}
-            value={body}
-            onChangeText={setBody}
-            selection={bodySelection}
-            onSelectionChange={(e) => setBodySelection(e.nativeEvent.selection)}
-            placeholder="Start writing…"
-            placeholderTextColor={theme.placeholder}
-            style={[styles.bodyInput, { color: theme.text }]}
-            multiline
-            textAlignVertical="top"
-          />
+          {editing ? (
+            <TextInput
+              ref={bodyInputRef}
+              value={body}
+              onChangeText={setBody}
+              placeholder="Start writing…"
+              placeholderTextColor={theme.placeholder}
+              style={[styles.bodyInput, { color: theme.text }]}
+              multiline
+              textAlignVertical="top"
+              autoFocus
+            />
+          ) : (
+            <Pressable onPress={() => setEditing(true)} style={styles.bodyReadView}>
+              {body.trim() ? (
+                <MarkdownBody fontSize={17}>{body}</MarkdownBody>
+              ) : (
+                <Text style={[styles.bodyPlaceholder, { color: theme.placeholder }]}>
+                  Start writing…
+                </Text>
+              )}
+            </Pressable>
+          )}
 
-          <SingleTagPicker tag={tag} onChange={setTag} />
+          <CategoryPicker category={category} onChange={setCategory} />
 
           <AudioRecorderSection
             recordings={audioRecordings}
@@ -252,9 +254,9 @@ export default function NoteDetailScreen() {
               setKeyPoints(nextKeyPoints);
             }}
             onTitleGenerated={setTitle}
+            onReplaceBody={(text) => { setBody(text); setEditing(false); }}
           />
         </ScrollView>
-        <FormattingToolbar onApply={handleApplyFormatting} />
       </KeyboardAvoidingView>
 
       <TitleSuggestionModal
@@ -264,13 +266,6 @@ export default function NoteDetailScreen() {
         onKeepCurrent={handleKeepCurrentTitle}
         onDismiss={handleKeepCurrentTitle}
       />
-
-      <TagInputModal
-        visible={tagModalVisible}
-        initialValue={tag ?? ''}
-        onConfirm={(val) => { setTag(val); setTagModalVisible(false); }}
-        onDismiss={() => setTagModalVisible(false)}
-      />
     </View>
   );
 }
@@ -278,26 +273,10 @@ export default function NoteDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    padding: Spacing.lg,
-    gap: Spacing.lg,
-    paddingBottom: Spacing.xl,
-  },
-  titleInput: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    padding: 0,
-  },
-  bodyInput: {
-    fontSize: 17,
-    lineHeight: 26,
-    minHeight: 200,
-    padding: 0,
-  },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  content: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: Spacing.xl },
+  titleInput: { fontSize: 28, fontWeight: '700', letterSpacing: -0.5, padding: 0 },
+  bodyInput: { fontSize: 17, lineHeight: 26, minHeight: 200, padding: 0 },
+  bodyReadView: { minHeight: 200 },
+  bodyPlaceholder: { fontSize: 17, lineHeight: 26 },
 });

@@ -9,11 +9,10 @@ export function isActiveNote(note: Note): boolean {
 export function matchesSearch(note: Note, query: string): boolean {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) return true;
-  const inTags = note.tags.some((tag) => tag.toLowerCase().includes(trimmed));
   return (
     note.title.toLowerCase().includes(trimmed) ||
     note.body.toLowerCase().includes(trimmed) ||
-    inTags
+    (note.category?.toLowerCase().includes(trimmed) ?? false)
   );
 }
 
@@ -46,19 +45,9 @@ export function getNotesForFilter(notes: Note[], filter: NoteFilter): Note[] {
   }
 }
 
-export function filterByTag(notes: Note[], tag: string | null): Note[] {
-  if (!tag) return notes;
-  return notes.filter((note) => note.tags.includes(tag));
-}
-
-export function getAllUsedTags(notes: Note[]): string[] {
-  const tagSet = new Set<string>();
-  for (const note of notes) {
-    for (const tag of note.tags) {
-      tagSet.add(tag);
-    }
-  }
-  return [...tagSet].sort((a, b) => a.localeCompare(b));
+export function filterByCategory(notes: Note[], category: string | null): Note[] {
+  if (!category) return notes;
+  return notes.filter((note) => note.category === category);
 }
 
 export function getSearchResults(notes: Note[], query: string): Note[] {

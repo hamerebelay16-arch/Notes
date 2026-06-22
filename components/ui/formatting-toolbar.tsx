@@ -5,7 +5,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 
 interface FormattingToolbarProps {
-  onApply: (type: 'bold' | 'italic' | 'underline' | 'checklist' | 'bullet') => void;
+  onApply: (type: 'bold' | 'italic' | 'checklist' | 'bullet') => void;
 }
 
 export function FormattingToolbar({ onApply }: FormattingToolbarProps) {
@@ -24,12 +24,6 @@ export function FormattingToolbar({ onApply }: FormattingToolbarProps) {
           onPress={() => onApply('italic')}
           style={({ pressed }) => [styles.btn, { backgroundColor: theme.surfaceElevated, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
           <Text style={[styles.btnText, { color: theme.text, fontStyle: 'italic', fontWeight: '700' }]}>I</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => onApply('underline')}
-          style={({ pressed }) => [styles.btn, { backgroundColor: theme.surfaceElevated, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
-          <Text style={[styles.btnText, { color: theme.text, textDecorationLine: 'underline', fontWeight: '700' }]}>U</Text>
         </Pressable>
 
         <View style={[styles.divider, { borderColor: theme.border }]} />

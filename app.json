@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "myNotes-app",
-    "slug": "myNotes-app",
+    "name": "MindSpace",
+    "slug": "mindspace",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -11,8 +11,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Allow myNotes to record voice notes and transcribe them offline.",
-        "NSSpeechRecognitionUsageDescription": "Allow myNotes to transcribe voice notes on your device."
+        "NSMicrophoneUsageDescription": "Allow MindSpace to record voice notes and transcribe them offline.",
+        "NSSpeechRecognitionUsageDescription": "Allow MindSpace to transcribe voice notes on your device."
       }
     },
     "android": {
@@ -30,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.myNotesapp"
+      "package": "com.anonymous.mindspace"
     },
     "web": {
       "output": "static",
@@ -41,19 +41,16 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#6366F1",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#0C0C0F"
           }
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow myNotes to record voice notes."
+          "microphonePermission": "Allow MindSpace to record voice notes."
         }
       ]
     ],

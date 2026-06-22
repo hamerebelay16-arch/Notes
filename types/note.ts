@@ -26,7 +26,7 @@ export interface Note {
   /** AI-generated bullet key points */
   keyPoints?: string[];
   attachments?: NoteAttachment[];
-  tags: string[];
+  category?: string;
   isPinned: boolean;
   isArchived: boolean;
   createdAt: string;
@@ -41,7 +41,7 @@ export type CreateNoteInput = Pick<Note, 'title' | 'body'> & {
   summary?: string;
   keyPoints?: string[];
   attachments?: NoteAttachment[];
-  tags?: string[];
+  category?: string;
 };
 
 export type UpdateNoteInput = Partial<CreateNoteInput> & {
