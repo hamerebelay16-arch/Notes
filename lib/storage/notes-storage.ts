@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { CreateNoteInput, Note, NoteAttachment, UpdateNoteInput } from '@/types/note';
+import type { CreateNoteInput, Note, NoteAttachment, UpdateNoteInput, AudioRecording } from '@/types/note';
 
 const STORAGE_KEY = '@mynotes/notes';
 
@@ -10,12 +10,32 @@ function generateId(): string {
 
 /** Ensures older saved notes get default values for new fields. */
 export function normalizeNote(raw: Record<string, unknown>): Note {
+  let audioRecordings: AudioRecording[] = [];
+  if (Array.isArray(raw.audioRecordings)) {
+    audioRecordings = (raw.audioRecordings as any[]).map((r) => ({
+      id: String(r.id),
+      uri: String(r.uri),
+      durationMs: Number(r.durationMs),
+      createdAt: String(r.createdAt),
+    }));
+  } else if (raw.audioUri) {
+    audioRecordings = [
+      {
+        id: 'default',
+        uri: String(raw.audioUri),
+        durationMs: Number(raw.audioDurationMs ?? 0),
+        createdAt: (raw.createdAt as string) ?? new Date().toISOString(),
+      },
+    ];
+  }
+
   return {
     id: raw.id as string,
     title: (raw.title as string) ?? '',
     body: (raw.body as string) ?? '',
     audioUri: raw.audioUri as string | undefined,
     audioDurationMs: raw.audioDurationMs as number | undefined,
+    audioRecordings,
     transcript: raw.transcript as string | undefined,
     summary: raw.summary as string | undefined,
     keyPoints: Array.isArray(raw.keyPoints) ? (raw.keyPoints as string[]) : undefined,
@@ -65,6 +85,7 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
     body: input.body.trim(),
     audioUri: input.audioUri,
     audioDurationMs: input.audioDurationMs,
+    audioRecordings: input.audioRecordings ?? [],
     transcript: input.transcript,
     summary: input.summary,
     keyPoints: input.keyPoints,

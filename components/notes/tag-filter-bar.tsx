@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Radius, Spacing } from '@/constants/theme';
@@ -7,12 +8,11 @@ interface TagFilterBarProps {
   tags: string[];
   selected: string | null;
   onSelect: (tag: string | null) => void;
+  onAddCategoryPress?: () => void;
 }
 
-export function TagFilterBar({ tags, selected, onSelect }: TagFilterBarProps) {
+export function TagFilterBar({ tags, selected, onSelect, onAddCategoryPress }: TagFilterBarProps) {
   const theme = useAppTheme();
-
-  if (tags.length === 0) return null;
 
   return (
     <ScrollView
@@ -34,9 +34,23 @@ export function TagFilterBar({ tags, selected, onSelect }: TagFilterBarProps) {
             styles.chipLabel,
             { color: selected === null ? theme.tint : theme.textSecondary },
           ]}>
-          All tags
+          All notes
         </Text>
       </Pressable>
+
+      {onAddCategoryPress && (
+        <Pressable
+          onPress={onAddCategoryPress}
+          style={[
+            styles.addChip,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+            },
+          ]}>
+          <Ionicons name="add" size={16} color={theme.textSecondary} />
+        </Pressable>
+      )}
 
       {tags.map((tag) => {
         const isSelected = selected === tag;
@@ -70,6 +84,7 @@ const styles = StyleSheet.create({
   content: {
     gap: Spacing.sm,
     paddingVertical: 2,
+    alignItems: 'center',
   },
   chip: {
     borderWidth: 1,
@@ -77,6 +92,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs + 2,
     maxWidth: 140,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 32,
+  },
+  addChip: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   chipLabel: {
     fontSize: 13,

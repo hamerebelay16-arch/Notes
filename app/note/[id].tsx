@@ -1,15 +1,13 @@
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
 } from 'react-native';
@@ -17,31 +15,31 @@ import {
 import { AudioRecorderSection } from '@/components/audio/audio-recorder';
 import { AiPanel } from '@/components/ai/ai-panel';
 import { TitleSuggestionModal } from '@/components/ai/title-suggestion-modal';
-import { ActionChip } from '@/components/notes/note-card';
-import { TagPicker } from '@/components/notes/tag-picker';
+import { SingleTagPicker } from '@/components/notes/single-tag-picker';
+import { TagInputModal } from '@/components/ui/tag-input-modal';
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { FormattingToolbar } from '@/components/ui/formatting-toolbar';
 import { Spacing } from '@/constants/theme';
-import { useCategories } from '@/context/categories-context';
 import { useNotes } from '@/context/notes-context';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { deleteAudioFile, persistRecording } from '@/lib/storage/audio-storage';
 import { suggestTitleAfterSave } from '@/lib/ai/title-on-save';
 import { getNoteById } from '@/lib/storage/notes-storage';
+import { insertFormatting } from '@/utils/formatting';
+import type { AudioRecording } from '@/types/note';
 
 export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const theme = useAppTheme();
-  const { updateNote, deleteNote, pinNote, unpinNote, archiveNote, unarchiveNote } = useNotes();
-  const { categories } = useCategories();
+  const { updateNote, deleteNote } = useNotes();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [isPinned, setIsPinned] = useState(false);
-  const [isArchived, setIsArchived] = useState(false);
-  const [audioUri, setAudioUri] = useState<string | undefined>();
-  const [audioDurationMs, setAudioDurationMs] = useState<number | undefined>();
+  const [bodySelection, setBodySelection] = useState({ start: 0, end: 0 });
+  const bodyInputRef = useRef<TextInput>(null);
+  const [tag, setTag] = useState<string | null>(null);
+  const [audioRecordings, setAudioRecordings] = useState<AudioRecording[]>([]);
   const [transcript, setTranscript] = useState<string | undefined>();
   const [summary, setSummary] = useState<string | undefined>();
   const [keyPoints, setKeyPoints] = useState<string[] | undefined>();
@@ -49,8 +47,9 @@ export default function NoteDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [titleSuggestion, setTitleSuggestion] = useState<string | null>(null);
   const [showTitleSuggestion, setShowTitleSuggestion] = useState(false);
+  const [tagModalVisible, setTagModalVisible] = useState(false);
 
-  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
+  const originalRef = useRef({ title: '', body: '', tag: null as string | null });
 
   useEffect(() => {
     (async () => {
@@ -64,17 +63,41 @@ export default function NoteDetailScreen() {
       }
       setTitle(note.title);
       setBody(note.body);
-      setTags(note.tags);
-      setIsPinned(note.isPinned);
-      setIsArchived(note.isArchived);
-      setAudioUri(note.audioUri);
-      setAudioDurationMs(note.audioDurationMs);
+      setTag(note.tags[0] ?? null);
+      setAudioRecordings(note.audioRecordings ?? []);
       setTranscript(note.transcript);
       setSummary(note.summary);
       setKeyPoints(note.keyPoints);
+      originalRef.current = { title: note.title, body: note.body, tag: note.tags[0] ?? null };
       setLoading(false);
     })();
   }, [id, router]);
+
+  const hasUnsavedChanges = () => {
+    const orig = originalRef.current;
+    return title !== orig.title || body !== orig.body || tag !== orig.tag;
+  };
+
+  const handleBack = () => {
+    if (hasUnsavedChanges()) {
+      Alert.alert('Unsaved changes', 'Do you want to save before leaving?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        { text: 'Save', onPress: handleSave },
+      ]);
+    } else {
+      router.back();
+    }
+  };
+
+  const handleTagAction = () => setTagModalVisible(true);
+
+  const handleApplyFormatting = (type: 'bold' | 'italic' | 'underline' | 'checklist' | 'bullet') => {
+    const { nextText, nextSelection } = insertFormatting(body, bodySelection, type);
+    setBody(nextText);
+    setBodySelection(nextSelection);
+    setTimeout(() => bodyInputRef.current?.focus(), 50);
+  };
 
   const handleSave = async () => {
     if (!id) return;
@@ -84,13 +107,13 @@ export default function NoteDetailScreen() {
       await updateNote(id, {
         title: savedTitle,
         body: body.trim(),
-        tags,
-        audioUri,
-        audioDurationMs,
+        tags: tag ? [tag] : [],
+        audioRecordings,
         transcript: transcript?.trim() || undefined,
         summary: summary?.trim() || undefined,
         keyPoints: keyPoints?.length ? keyPoints : undefined,
       });
+      originalRef.current = { title: savedTitle, body: body.trim(), tag };
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -109,9 +132,7 @@ export default function NoteDetailScreen() {
   };
 
   const handleAcceptSuggestedTitle = async (nextTitle: string) => {
-    if (id) {
-      await updateNote(id, { title: nextTitle.trim() });
-    }
+    if (id) await updateNote(id, { title: nextTitle.trim() });
     setShowTitleSuggestion(false);
     setTitleSuggestion(null);
     router.replace('/');
@@ -123,52 +144,15 @@ export default function NoteDetailScreen() {
     router.replace('/');
   };
 
-  const handleTogglePin = async () => {
-    if (!id || isArchived) return;
-    if (isPinned) {
-      await unpinNote(id);
-      setIsPinned(false);
-    } else {
-      await pinNote(id);
-      setIsPinned(true);
-    }
-  };
-
-  const handleArchive = () => {
-    Alert.alert('Archive note', 'Archived notes are hidden from the home screen.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Archive',
-        onPress: async () => {
-          if (!id) return;
-          await archiveNote(id);
-          if (Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          router.replace('/');
-        },
-      },
-    ]);
-  };
-
-  const handleUnarchive = async () => {
-    if (!id) return;
-    await unarchiveNote(id);
-    setIsArchived(false);
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  };
-
   const handleDelete = () => {
-    Alert.alert('Delete note', 'This cannot be undone.', [
+    Alert.alert('Delete note', 'Are you sure you want to delete this?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
           if (!id) return;
-          deleteAudioFile(id);
+          audioRecordings.forEach((rec) => deleteAudioFile(id, rec.id));
           await deleteNote(id);
           if (Platform.OS !== 'web') {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -181,18 +165,25 @@ export default function NoteDetailScreen() {
 
   const handleRecorded = async (uri: string, durationMs: number) => {
     if (!id) return;
-    const permanentUri = await persistRecording(uri, id);
-    setAudioUri(permanentUri);
-    setAudioDurationMs(durationMs);
+    const recordingId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const permanentUri = await persistRecording(uri, id, recordingId);
+    const newRecording: AudioRecording = {
+      id: recordingId,
+      uri: permanentUri,
+      durationMs,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [...audioRecordings, newRecording];
+    setAudioRecordings(updated);
+    await updateNote(id, { audioRecordings: updated });
   };
 
-  const handleClearAudio = () => {
-    if (id) {
-      deleteAudioFile(id);
-    }
-    setAudioUri(undefined);
-    setAudioDurationMs(undefined);
-    setTranscript(undefined);
+  const handleClearAudio = async (recordingId: string) => {
+    if (!id) return;
+    deleteAudioFile(id, recordingId);
+    const updated = audioRecordings.filter((rec) => rec.id !== recordingId);
+    setAudioRecordings(updated);
+    await updateNote(id, { audioRecordings: updated });
   };
 
   if (loading) {
@@ -206,8 +197,10 @@ export default function NoteDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <ScreenHeader
-        title={isArchived ? 'Archived' : 'Note'}
-        onBack={() => router.back()}
+        title="Note"
+        onBack={handleBack}
+        tagAction={{ onPress: handleTagAction }}
+        secondaryAction={{ icon: 'trash-outline', onPress: handleDelete, destructive: true }}
         rightAction={{ label: saving ? '…' : 'Save', onPress: handleSave, disabled: saving }}
       />
 
@@ -218,35 +211,6 @@ export default function NoteDetailScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          {isArchived && (
-            <View style={[styles.archivedBanner, { backgroundColor: theme.tintMuted }]}>
-              <Text style={[styles.archivedText, { color: theme.tint }]}>
-                This note is archived and hidden from your main list.
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.actions}>
-            {!isArchived && (
-              <ActionChip
-                label={isPinned ? 'Pinned' : 'Pin'}
-                icon={isPinned ? 'pin' : 'pin-outline'}
-                active={isPinned}
-                onPress={handleTogglePin}
-              />
-            )}
-
-            {isArchived ? (
-              <ActionChip
-                label="Unarchive"
-                icon="arrow-undo-outline"
-                onPress={handleUnarchive}
-              />
-            ) : (
-              <ActionChip label="Archive" icon="archive-outline" onPress={handleArchive} />
-            )}
-          </View>
-
           <TextInput
             value={title}
             onChangeText={setTitle}
@@ -256,8 +220,11 @@ export default function NoteDetailScreen() {
           />
 
           <TextInput
+            ref={bodyInputRef}
             value={body}
             onChangeText={setBody}
+            selection={bodySelection}
+            onSelectionChange={(e) => setBodySelection(e.nativeEvent.selection)}
             placeholder="Start writing…"
             placeholderTextColor={theme.placeholder}
             style={[styles.bodyInput, { color: theme.text }]}
@@ -265,11 +232,10 @@ export default function NoteDetailScreen() {
             textAlignVertical="top"
           />
 
-          <TagPicker tags={tags} suggestions={categoryNames} onChange={setTags} />
+          <SingleTagPicker tag={tag} onChange={setTag} />
 
           <AudioRecorderSection
-            audioUri={audioUri}
-            durationMs={audioDurationMs}
+            recordings={audioRecordings}
             onRecorded={handleRecorded}
             onClear={handleClearAudio}
           />
@@ -277,7 +243,7 @@ export default function NoteDetailScreen() {
           <AiPanel
             body={body}
             transcript={transcript}
-            audioUri={audioUri}
+            audioUri={audioRecordings[0]?.uri}
             summary={summary}
             keyPoints={keyPoints}
             onTranscriptChange={setTranscript}
@@ -287,11 +253,8 @@ export default function NoteDetailScreen() {
             }}
             onTitleGenerated={setTitle}
           />
-
-          <Pressable onPress={handleDelete} style={[styles.deleteBtn, { borderColor: theme.border }]}>
-            <Text style={[styles.deleteLabel, { color: theme.danger }]}>Delete note</Text>
-          </Pressable>
         </ScrollView>
+        <FormattingToolbar onApply={handleApplyFormatting} />
       </KeyboardAvoidingView>
 
       <TitleSuggestionModal
@@ -301,17 +264,20 @@ export default function NoteDetailScreen() {
         onKeepCurrent={handleKeepCurrentTitle}
         onDismiss={handleKeepCurrentTitle}
       />
+
+      <TagInputModal
+        visible={tagModalVisible}
+        initialValue={tag ?? ''}
+        onConfirm={(val) => { setTag(val); setTagModalVisible(false); }}
+        onDismiss={() => setTagModalVisible(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  flex: { flex: 1 },
   loading: {
     flex: 1,
     alignItems: 'center',
@@ -321,20 +287,6 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     gap: Spacing.lg,
     paddingBottom: Spacing.xl,
-  },
-  archivedBanner: {
-    borderRadius: 12,
-    padding: Spacing.md,
-  },
-  archivedText: {
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
   },
   titleInput: {
     fontSize: 28,
@@ -347,15 +299,5 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     minHeight: 200,
     padding: 0,
-  },
-  deleteBtn: {
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-  },
-  deleteLabel: {
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

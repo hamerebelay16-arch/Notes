@@ -8,9 +8,9 @@ export async function ensureAudioDirectory(): Promise<void> {
   }
 }
 
-export async function persistRecording(tempUri: string, noteId: string): Promise<string> {
+export async function persistRecording(tempUri: string, noteId: string, recordingId: string): Promise<string> {
   await ensureAudioDirectory();
-  const destination = new File(AUDIO_DIR, `${noteId}.m4a`);
+  const destination = new File(AUDIO_DIR, `${noteId}_${recordingId}.m4a`);
   const source = new File(tempUri);
 
   if (destination.exists) {
@@ -21,8 +21,8 @@ export async function persistRecording(tempUri: string, noteId: string): Promise
   return destination.uri;
 }
 
-export function deleteAudioFile(noteId: string): void {
-  const file = new File(AUDIO_DIR, `${noteId}.m4a`);
+export function deleteAudioFile(noteId: string, recordingId: string): void {
+  const file = new File(AUDIO_DIR, `${noteId}_${recordingId}.m4a`);
   if (file.exists) {
     file.delete();
   }

@@ -5,18 +5,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 
+interface ActionItem {
+  label?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+}
+
 interface ScreenHeaderProps {
   title: string;
   onBack?: () => void;
-  rightAction?: {
-    label: string;
-    onPress: () => void;
-    disabled?: boolean;
-    destructive?: boolean;
-  };
+  rightAction?: ActionItem;
+  secondaryAction?: ActionItem;
+  tagAction?: ActionItem;
 }
 
-export function ScreenHeader({ title, onBack, rightAction }: ScreenHeaderProps) {
+export function ScreenHeader({ title, onBack, rightAction, secondaryAction, tagAction }: ScreenHeaderProps) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
 
@@ -43,24 +48,57 @@ export function ScreenHeader({ title, onBack, rightAction }: ScreenHeaderProps) 
           {title}
         </Text>
 
-        {rightAction ? (
-          <Pressable
-            onPress={rightAction.onPress}
-            disabled={rightAction.disabled}
-            style={[styles.actionBtn, rightAction.disabled && styles.disabled]}>
-            <Text
-              style={[
-                styles.actionLabel,
-                {
-                  color: rightAction.destructive ? theme.danger : theme.tint,
-                },
-              ]}>
-              {rightAction.label}
-            </Text>
-          </Pressable>
-        ) : (
-          <View style={styles.backPlaceholder} />
-        )}
+        <View style={styles.rightActions}>
+          {tagAction && (
+            <Pressable
+              onPress={tagAction.onPress}
+              disabled={tagAction.disabled}
+              style={[styles.actionBtn, tagAction.disabled && styles.disabled]}
+              hitSlop={8}>
+              <Ionicons name="pricetag-outline" size={20} color={theme.tint} />
+            </Pressable>
+          )}
+          {secondaryAction && (
+            <Pressable
+              onPress={secondaryAction.onPress}
+              disabled={secondaryAction.disabled}
+              style={[styles.actionBtn, secondaryAction.disabled && styles.disabled]}
+              hitSlop={8}>
+              {secondaryAction.icon ? (
+                <Ionicons
+                  name={secondaryAction.icon}
+                  size={22}
+                  color={secondaryAction.destructive ? theme.danger : theme.tint}
+                />
+              ) : (
+                <Text
+                  style={[
+                    styles.actionLabel,
+                    { color: secondaryAction.destructive ? theme.danger : theme.tint },
+                  ]}>
+                  {secondaryAction.label}
+                </Text>
+              )}
+            </Pressable>
+          )}
+
+          {rightAction ? (
+            <Pressable
+              onPress={rightAction.onPress}
+              disabled={rightAction.disabled}
+              style={[styles.actionBtn, rightAction.disabled && styles.disabled]}>
+              <Text
+                style={[
+                  styles.actionLabel,
+                  { color: rightAction.destructive ? theme.danger : theme.tint },
+                ]}>
+                {rightAction.label}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.backPlaceholder} />
+          )}
+        </View>
       </View>
     </View>
   );
@@ -92,6 +130,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.2,
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   actionBtn: {
     minWidth: 40,

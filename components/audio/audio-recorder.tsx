@@ -14,17 +14,16 @@ import {
 import { Radius, Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { formatDuration } from '@/utils/format-date';
+import type { AudioRecording } from '@/types/note';
 
 interface AudioRecorderProps {
-  audioUri?: string;
-  durationMs?: number;
+  recordings: AudioRecording[];
   onRecorded: (uri: string, durationMs: number) => void;
-  onClear: () => void;
+  onClear: (recordingId: string) => void;
 }
 
 export function AudioRecorderSection({
-  audioUri,
-  durationMs,
+  recordings = [],
   onRecorded,
   onClear,
 }: AudioRecorderProps) {
@@ -32,8 +31,6 @@ export function AudioRecorderSection({
   const [ready, setReady] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 200);
-  const player = useAudioPlayer(audioUri ?? null);
-  const playerStatus = useAudioPlayerStatus(player);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -69,24 +66,6 @@ export function AudioRecorderSection({
     recorder.record();
   };
 
-  const handlePlayPause = () => {
-    if (!audioUri) return;
-
-    if (playerStatus.playing) {
-      player.pause();
-      return;
-    }
-
-    if (playerStatus.currentTime >= playerStatus.duration && playerStatus.duration > 0) {
-      player.seekTo(0);
-    }
-    player.play();
-  };
-
-  const displayDuration = audioUri
-    ? formatDuration(durationMs ?? playerStatus.duration * 1000)
-    : formatDuration(recorderState.durationMillis);
-
   if (Platform.OS === 'web') {
     return (
       <View style={[styles.container, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
@@ -100,30 +79,32 @@ export function AudioRecorderSection({
 
   return (
     <View style={[styles.container, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-      <View style={styles.row}>
-        <View style={[styles.iconCircle, { backgroundColor: theme.voiceMuted }]}>
-          <Ionicons name="mic" size={20} color={theme.voice} />
-        </View>
-        <View style={styles.meta}>
-          <Text style={[styles.label, { color: theme.text }]}>Voice note</Text>
-          <Text style={[styles.duration, { color: theme.textSecondary }]}>{displayDuration}</Text>
-        </View>
+      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Voice Notes</Text>
 
-        {audioUri ? (
-          <View style={styles.actions}>
+      {recordings.length > 0 && (
+        <View style={styles.recordingsList}>
+          {recordings.map((rec) => (
+            <AudioPlayRow
+              key={rec.id}
+              recording={rec}
+              onDelete={() => onClear(rec.id)}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* Record button or active recording UI */}
+      <View style={styles.row}>
+        {recorderState.isRecording ? (
+          <View style={styles.recordingActiveRow}>
+            <View style={[styles.pulse, { backgroundColor: theme.danger }]} />
+            <Text style={[styles.recordingText, { color: theme.danger }]}>
+              Recording ({formatDuration(recorderState.durationMillis)})
+            </Text>
             <Pressable
-              onPress={handlePlayPause}
-              style={[styles.actionBtn, { backgroundColor: theme.tintMuted }]}>
-              <Ionicons
-                name={playerStatus.playing ? 'pause' : 'play'}
-                size={18}
-                color={theme.tint}
-              />
-            </Pressable>
-            <Pressable
-              onPress={onClear}
-              style={[styles.actionBtn, { backgroundColor: theme.dangerMuted }]}>
-              <Ionicons name="trash-outline" size={18} color={theme.danger} />
+              onPress={handleToggleRecord}
+              style={[styles.stopBtn, { backgroundColor: theme.danger }]}>
+              <Ionicons name="stop" size={18} color="#FFFFFF" />
             </Pressable>
           </View>
         ) : (
@@ -133,27 +114,76 @@ export function AudioRecorderSection({
             style={[
               styles.recordBtn,
               {
-                backgroundColor: recorderState.isRecording ? theme.danger : theme.tint,
+                backgroundColor: theme.tint,
               },
             ]}>
-            <Ionicons
-              name={recorderState.isRecording ? 'stop' : 'radio-button-on'}
-              size={18}
-              color="#FFFFFF"
-            />
-            <Text style={styles.recordLabel}>
-              {recorderState.isRecording ? 'Stop' : 'Record'}
-            </Text>
+            <Ionicons name="radio-button-on" size={18} color="#FFFFFF" />
+            <Text style={styles.recordLabel}>Record voice note</Text>
           </Pressable>
         )}
       </View>
+    </View>
+  );
+}
 
-      {recorderState.isRecording && (
-        <View style={styles.recordingRow}>
-          <View style={[styles.pulse, { backgroundColor: theme.danger }]} />
-          <Text style={[styles.recordingText, { color: theme.danger }]}>Recording…</Text>
-        </View>
-      )}
+function AudioPlayRow({
+  recording,
+  onDelete,
+}: {
+  recording: AudioRecording;
+  onDelete: () => void;
+}) {
+  const theme = useAppTheme();
+  const player = useAudioPlayer(recording.uri);
+  const playerStatus = useAudioPlayerStatus(player);
+
+  const handlePlayPause = () => {
+    if (playerStatus.playing) {
+      player.pause();
+    } else {
+      if (playerStatus.currentTime >= playerStatus.duration && playerStatus.duration > 0) {
+        player.seekTo(0);
+      }
+      player.play();
+    }
+  };
+
+  const formattedDate = new Date(recording.createdAt).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <View style={[styles.playRow, { borderBottomColor: theme.border }]}>
+      <View style={[styles.iconCircleSmall, { backgroundColor: theme.voiceMuted }]}>
+        <Ionicons name="mic" size={16} color={theme.voice} />
+      </View>
+      <View style={styles.playMeta}>
+        <Text style={[styles.playLabel, { color: theme.text }]} numberOfLines={1}>
+          {formattedDate}
+        </Text>
+        <Text style={[styles.playDuration, { color: theme.textSecondary }]}>
+          {formatDuration(recording.durationMs ?? playerStatus.duration * 1000)}
+        </Text>
+      </View>
+      <View style={styles.actions}>
+        <Pressable
+          onPress={handlePlayPause}
+          style={[styles.actionBtn, { backgroundColor: theme.tintMuted }]}>
+          <Ionicons
+            name={playerStatus.playing ? 'pause' : 'play'}
+            size={18}
+            color={theme.tint}
+          />
+        </Pressable>
+        <Pressable
+          onPress={onDelete}
+          style={[styles.actionBtn, { backgroundColor: theme.dangerMuted }]}>
+          <Ionicons name="trash-outline" size={18} color={theme.danger} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -163,30 +193,46 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 1,
     padding: Spacing.md,
-    gap: Spacing.sm,
+    gap: Spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  recordingsList: {
+    gap: Spacing.xs,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    justifyContent: 'center',
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
+  playRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  iconCircleSmall: {
+    width: 32,
+    height: 32,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  meta: {
+  playMeta: {
     flex: 1,
     gap: 2,
   },
-  label: {
-    fontSize: 15,
+  playLabel: {
+    fontSize: 14,
     fontWeight: '600',
   },
-  duration: {
-    fontSize: 13,
+  playDuration: {
+    fontSize: 12,
     fontWeight: '500',
   },
   actions: {
@@ -194,8 +240,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   actionBtn: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -207,17 +253,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
     borderRadius: Radius.full,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
   },
   recordLabel: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },
-  recordingRow: {
+  recordingActiveRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingTop: 4,
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.xs,
   },
   pulse: {
     width: 8,
@@ -227,5 +277,13 @@ const styles = StyleSheet.create({
   recordingText: {
     fontSize: 13,
     fontWeight: '600',
+    flex: 1,
+  },
+  stopBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

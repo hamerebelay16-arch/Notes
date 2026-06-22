@@ -1,6 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -10,8 +19,10 @@ import Animated, {
 
 import { Radius, Shadow, Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { useNotes } from '@/context/notes-context';
 import type { Note } from '@/types/note';
 import { formatRelativeDate } from '@/utils/format-date';
+import { useState } from 'react';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -19,97 +30,178 @@ interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onTagPress?: (tag: string) => void;
+  onDeleted?: () => void;
 }
 
-export function NoteCard({ note, onPress, onTagPress }: NoteCardProps) {
+export function NoteCard({ note: initialNote, onPress, onTagPress, onDeleted }: NoteCardProps) {
   const theme = useAppTheme();
-  const hasAttachments = Boolean(note.attachments?.length);
-  const preview = note.body.trim()
-    ? note.body.trim()
-    : hasAttachments
-    ? 'Attachment note'
-    : note.audioUri
-    ? 'Voice note'
-    : 'No content';
-  const hasAudio = Boolean(note.audioUri);
-  const hasTags = note.tags.length > 0;
+  const { pinNote, unpinNote, archiveNote, unarchiveNote, deleteNote, getNote } = useNotes();
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  // Use live note from context so pin state updates immediately
+  const note = getNote(initialNote.id) ?? initialNote;
+
+  const handleLongPress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setMenuVisible(true);
+  };
+
+  const handlePin = async () => {
+    setMenuVisible(false);
+    if (note.isPinned) {
+      await unpinNote(note.id);
+    } else {
+      await pinNote(note.id);
+    }
+  };
+
+  const handleArchive = async () => {
+    setMenuVisible(false);
+    if (note.isArchived) {
+      await unarchiveNote(note.id);
+    } else {
+      await archiveNote(note.id);
+    }
+  };
+
+  const handleDelete = () => {
+    setMenuVisible(false);
+    Alert.alert('Delete note', 'Are you sure you want to delete this?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteNote(note.id);
+          onDeleted?.();
+        },
+      },
+    ]);
+  };
+
+  const handleShare = async () => {
+    setMenuVisible(false);
+    const text = [note.title, note.body].filter(Boolean).join('\n\n');
+    try {
+      await Share.share({ message: text, title: note.title });
+    } catch {
+      // user cancelled or error — do nothing
+    }
+  };
+
+  const hasRecordings = Boolean(note.audioUri || (note.audioRecordings && note.audioRecordings.length > 0));
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: theme.surface,
-          borderColor: note.isArchived ? theme.border : theme.border,
-          opacity: note.isArchived ? 0.85 : 1,
-        },
-        Shadow.card,
-        pressed && styles.pressed,
-      ]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
-          {note.title.trim() || 'Untitled'}
-        </Text>
-        <View style={styles.badges}>
-          {note.isArchived && (
-            <View style={[styles.badge, { backgroundColor: theme.tintMuted }]}>
-              <Ionicons name="archive" size={11} color={theme.textSecondary} />
-            </View>
-          )}
-          {note.isPinned && !note.isArchived && (
-            <Ionicons name="pin" size={14} color={theme.tint} />
-          )}
-          {hasAudio && (
-            <View style={[styles.badge, { backgroundColor: theme.voiceMuted }]}>
-              <Ionicons name="mic" size={12} color={theme.voice} />
-            </View>
-          )}
-          {hasAttachments && (
-            <View style={[styles.badge, { backgroundColor: theme.tintMuted }]}>
-              <Ionicons name="image-outline" size={12} color={theme.tint} />
-            </View>
-          )}
+    <>
+      <Pressable
+        onPress={onPress}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
+        style={({ pressed }) => [
+          styles.card,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            opacity: note.isArchived ? 0.85 : 1,
+          },
+          Shadow.card,
+          pressed && styles.pressed,
+        ]}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+            {note.title.trim() || 'Untitled'}
+          </Text>
+          <View style={styles.badges}>
+            {note.isArchived && (
+              <View style={[styles.badge, { backgroundColor: theme.tintMuted }]}>
+                <Ionicons name="archive" size={11} color={theme.textSecondary} />
+              </View>
+            )}
+            {note.isPinned && !note.isArchived && (
+              <Ionicons name="pin" size={14} color={theme.tint} />
+            )}
+            {hasRecordings && (
+              <View style={[styles.badge, { backgroundColor: theme.voiceMuted }]}>
+                <Ionicons name="mic" size={12} color={theme.voice} />
+              </View>
+            )}
+          </View>
         </View>
-      </View>
 
-      <Text style={[styles.preview, { color: theme.textSecondary }]} numberOfLines={2}>
-        {preview}
-      </Text>
-
-      {hasTags && (
-        <View style={styles.tags}>
-          {note.tags.slice(0, 4).map((tag) =>
-            onTagPress ? (
+        {note.tags && note.tags.length > 0 && (
+          <View style={styles.tagsRow}>
+            {note.tags.map((tag) => (
               <Pressable
                 key={tag}
-                onPress={() => onTagPress(tag)}
-                style={[styles.tag, { backgroundColor: theme.tintMuted }]}>
-                <Text style={[styles.tagLabel, { color: theme.tint }]} numberOfLines={1}>
+                onPress={() => onTagPress?.(tag)}
+                style={[
+                  styles.tagChip,
+                  { backgroundColor: theme.tintMuted, borderColor: theme.tint },
+                ]}>
+                <Text style={[styles.tagText, { color: theme.tint }]} numberOfLines={1}>
                   {tag}
                 </Text>
               </Pressable>
-            ) : (
-              <View key={tag} style={[styles.tag, { backgroundColor: theme.tintMuted }]}>
-                <Text style={[styles.tagLabel, { color: theme.tint }]} numberOfLines={1}>
-                  {tag}
-                </Text>
-              </View>
-            )
-          )}
-          {note.tags.length > 4 && (
-            <Text style={[styles.moreTags, { color: theme.textSecondary }]}>
-              +{note.tags.length - 4}
-            </Text>
-          )}
-        </View>
-      )}
+            ))}
+          </View>
+        )}
 
-      <View style={styles.footer}>
         <Text style={[styles.date, { color: theme.textSecondary }]}>
           {formatRelativeDate(note.updatedAt)}
         </Text>
-      </View>
+      </Pressable>
+
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}>
+        <Pressable style={styles.overlay} onPress={() => setMenuVisible(false)}>
+          <View style={[styles.menu, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.menuTitle, { color: theme.textSecondary }]} numberOfLines={1}>
+              {note.title || 'Untitled'}
+            </Text>
+            <MenuOption
+              icon={note.isPinned ? 'pin' : 'pin-outline'}
+              label={note.isPinned ? 'Unpin' : 'Pin'}
+              onPress={handlePin}
+            />
+            <MenuOption
+              icon={note.isArchived ? 'archive' : 'archive-outline'}
+              label={note.isArchived ? 'Unarchive' : 'Archive'}
+              onPress={handleArchive}
+            />
+            <MenuOption icon="share-outline" label="Share" onPress={handleShare} />
+            <MenuOption icon="trash-outline" label="Delete" onPress={handleDelete} destructive />
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+function MenuOption({
+  icon,
+  label,
+  onPress,
+  destructive,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+}) {
+  const theme = useAppTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.menuOption, { opacity: pressed ? 0.7 : 1 }]}>
+      <Ionicons name={icon} size={20} color={destructive ? theme.danger : theme.text} />
+      <Text style={[styles.menuOptionLabel, { color: destructive ? theme.danger : theme.text }]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -165,7 +257,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md + 2,
-    gap: Spacing.sm + 2,
+    gap: Spacing.xs,
   },
   pressed: {
     opacity: 0.92,
@@ -195,36 +287,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  preview: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  tags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    marginTop: 2,
-  },
-  tag: {
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.sm + 2,
-    paddingVertical: 3,
-    maxWidth: 110,
-  },
-  tagLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  moreTags: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  footer: {
-    marginTop: 2,
-  },
   date: {
     fontSize: 13,
+    fontWeight: '500',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  menu: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+    paddingVertical: Spacing.sm,
+  },
+  menuTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  menuOptionLabel: {
+    fontSize: 16,
     fontWeight: '500',
   },
   actionChip: {
@@ -238,6 +336,23 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs - 2,
+    marginBottom: Spacing.xs - 2,
+  },
+  tagChip: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 1,
+  },
+  tagText: {
+    fontSize: 11,
     fontWeight: '600',
   },
 });

@@ -110,7 +110,7 @@ export default function CategoriesScreen() {
                 { backgroundColor: theme.surface, borderColor: theme.border },
               ]}>
               <View style={[styles.dot, { backgroundColor: theme.tintMuted }]}>
-                <Ionicons name="pricetag" size={14} color={theme.tint} />
+                <Ionicons name="folder-outline" size={14} color={theme.tint} />
               </View>
               <Text style={[styles.rowLabel, { color: theme.text }]}>{item.name}</Text>
               <Pressable onPress={() => handleDelete(item.id, item.name)} hitSlop={8}>

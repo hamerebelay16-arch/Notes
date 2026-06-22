@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,27 +14,29 @@ import {
 import { AudioRecorderSection } from '@/components/audio/audio-recorder';
 import { AiPanel } from '@/components/ai/ai-panel';
 import { TitleSuggestionModal } from '@/components/ai/title-suggestion-modal';
-import { TagPicker } from '@/components/notes/tag-picker';
+import { SingleTagPicker } from '@/components/notes/single-tag-picker';
+import { TagInputModal } from '@/components/ui/tag-input-modal';
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { FormattingToolbar } from '@/components/ui/formatting-toolbar';
 import { Spacing } from '@/constants/theme';
-import { useCategories } from '@/context/categories-context';
 import { useNotes } from '@/context/notes-context';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { suggestTitleAfterSave } from '@/lib/ai/title-on-save';
 import { persistRecording } from '@/lib/storage/audio-storage';
+import { insertFormatting } from '@/utils/formatting';
+import type { AudioRecording } from '@/types/note';
 
 export default function NewNoteScreen() {
   const router = useRouter();
   const theme = useAppTheme();
   const { createNote, updateNote } = useNotes();
-  const { categories } = useCategories();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [pendingAudio, setPendingAudio] = useState<{ uri: string; durationMs: number } | null>(
-    null
-  );
+  const [bodySelection, setBodySelection] = useState({ start: 0, end: 0 });
+  const bodyInputRef = useRef<TextInput>(null);
+  const [tag, setTag] = useState<string | null>(null);
+  const [pendingAudios, setPendingAudios] = useState<{ id: string; uri: string; durationMs: number; createdAt: string }[]>([]);
   const [transcript, setTranscript] = useState<string | undefined>();
   const [summary, setSummary] = useState<string | undefined>();
   const [keyPoints, setKeyPoints] = useState<string[] | undefined>();
@@ -42,11 +44,33 @@ export default function NewNoteScreen() {
   const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
   const [titleSuggestion, setTitleSuggestion] = useState<string | null>(null);
   const [showTitleSuggestion, setShowTitleSuggestion] = useState(false);
+  const [tagModalVisible, setTagModalVisible] = useState(false);
 
-  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
+  const hasContent = () => Boolean(title.trim() || body.trim() || pendingAudios.length > 0);
+
+  const handleBack = () => {
+    if (hasContent()) {
+      Alert.alert('Unsaved changes', 'Do you want to save before leaving?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+        { text: 'Save', onPress: handleSave },
+      ]);
+    } else {
+      router.back();
+    }
+  };
+
+  const handleTagAction = () => setTagModalVisible(true);
+
+  const handleApplyFormatting = (type: 'bold' | 'italic' | 'underline' | 'checklist' | 'bullet') => {
+    const { nextText, nextSelection } = insertFormatting(body, bodySelection, type);
+    setBody(nextText);
+    setBodySelection(nextSelection);
+    setTimeout(() => bodyInputRef.current?.focus(), 50);
+  };
 
   const handleSave = async () => {
-    if (!title.trim() && !body.trim() && !pendingAudio) {
+    if (!title.trim() && !body.trim() && pendingAudios.length === 0) {
       Alert.alert('Empty note', 'Add a title, some text, or a voice recording.');
       return;
     }
@@ -57,17 +81,26 @@ export default function NewNoteScreen() {
       const note = await createNote({
         title: savedTitle,
         body: body.trim(),
-        tags,
+        tags: tag ? [tag] : [],
         transcript: transcript?.trim() || undefined,
         summary: summary?.trim() || undefined,
         keyPoints: keyPoints?.length ? keyPoints : undefined,
       });
 
-      if (pendingAudio) {
-        const permanentUri = await persistRecording(pendingAudio.uri, note.id);
+      if (pendingAudios.length > 0) {
+        const persisted = await Promise.all(
+          pendingAudios.map(async (audio) => {
+            const permanentUri = await persistRecording(audio.uri, note.id, audio.id);
+            return {
+              id: audio.id,
+              uri: permanentUri,
+              durationMs: audio.durationMs,
+              createdAt: audio.createdAt,
+            };
+          })
+        );
         await updateNote(note.id, {
-          audioUri: permanentUri,
-          audioDurationMs: pendingAudio.durationMs,
+          audioRecordings: persisted,
         });
       }
 
@@ -90,9 +123,7 @@ export default function NewNoteScreen() {
   };
 
   const handleAcceptSuggestedTitle = async (nextTitle: string) => {
-    if (savedNoteId) {
-      await updateNote(savedNoteId, { title: nextTitle.trim() });
-    }
+    if (savedNoteId) await updateNote(savedNoteId, { title: nextTitle.trim() });
     setShowTitleSuggestion(false);
     setTitleSuggestion(null);
     router.replace('/');
@@ -108,8 +139,9 @@ export default function NewNoteScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <ScreenHeader
         title="New Note"
-        onBack={() => router.back()}
-        rightAction={{ label: 'Save', onPress: handleSave, disabled: saving }}
+        onBack={handleBack}
+        tagAction={{ onPress: handleTagAction }}
+        rightAction={{ label: saving ? '…' : 'Save', onPress: handleSave, disabled: saving }}
       />
 
       <KeyboardAvoidingView
@@ -129,8 +161,11 @@ export default function NewNoteScreen() {
           />
 
           <TextInput
+            ref={bodyInputRef}
             value={body}
             onChangeText={setBody}
+            selection={bodySelection}
+            onSelectionChange={(e) => setBodySelection(e.nativeEvent.selection)}
             placeholder="Start writing…"
             placeholderTextColor={theme.placeholder}
             style={[styles.bodyInput, { color: theme.text }]}
@@ -138,22 +173,28 @@ export default function NewNoteScreen() {
             textAlignVertical="top"
           />
 
-          <TagPicker tags={tags} suggestions={categoryNames} onChange={setTags} />
+          <SingleTagPicker tag={tag} onChange={setTag} />
 
           <AudioRecorderSection
-            audioUri={pendingAudio?.uri}
-            durationMs={pendingAudio?.durationMs}
-            onRecorded={(uri, durationMs) => setPendingAudio({ uri, durationMs })}
-            onClear={() => {
-              setPendingAudio(null);
-              setTranscript(undefined);
+            recordings={pendingAudios}
+            onRecorded={(uri, durationMs) => {
+              const newAudio = {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                uri,
+                durationMs,
+                createdAt: new Date().toISOString(),
+              };
+              setPendingAudios((prev) => [...prev, newAudio]);
+            }}
+            onClear={(audioId) => {
+              setPendingAudios((prev) => prev.filter((a) => a.id !== audioId));
             }}
           />
 
           <AiPanel
             body={body}
             transcript={transcript}
-            audioUri={pendingAudio?.uri}
+            audioUri={pendingAudios[0]?.uri}
             summary={summary}
             keyPoints={keyPoints}
             onTranscriptChange={setTranscript}
@@ -164,6 +205,7 @@ export default function NewNoteScreen() {
             onTitleGenerated={setTitle}
           />
         </ScrollView>
+        <FormattingToolbar onApply={handleApplyFormatting} />
       </KeyboardAvoidingView>
 
       <TitleSuggestionModal
@@ -173,17 +215,20 @@ export default function NewNoteScreen() {
         onKeepCurrent={handleKeepCurrentTitle}
         onDismiss={handleKeepCurrentTitle}
       />
+
+      <TagInputModal
+        visible={tagModalVisible}
+        initialValue={tag ?? ''}
+        onConfirm={(val) => { setTag(val); setTagModalVisible(false); }}
+        onDismiss={() => setTagModalVisible(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  flex: { flex: 1 },
   content: {
     padding: Spacing.lg,
     gap: Spacing.lg,

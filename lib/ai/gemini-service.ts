@@ -67,9 +67,21 @@ function offlineTitle(body: string, transcript?: string): TitleGenerationResult 
     content
       .split('\n')
       .map((line) => line.trim())
-      .find(Boolean) ?? 'Untitled';
+      .find(Boolean) ?? '';
 
-  const title = firstLine.slice(0, 60).replace(/\s+/g, ' ').trim() || 'Untitled';
+  if (!firstLine) return { title: 'Untitled', source: 'offline' };
+
+  // Get the first sentence or clause
+  const firstSentence = firstLine.split(/[.!?]/)[0].trim();
+
+  // Limit to maximum 6 words
+  const words = firstSentence.split(/\s+/);
+  let title = words.slice(0, 6).join(' ');
+  if (words.length > 6) {
+    title += '...';
+  }
+
+  title = title.trim() || 'Untitled';
   return { title, source: 'offline' };
 }
 
@@ -147,8 +159,7 @@ export async function generateNoteTitle(
   }
 
   try {
-    const prompt = `Generate a short, descriptive title (max 8 words) for this note.
-Return ONLY the title text, no quotes or punctuation at the end.
+    const prompt = `Generate a short, clear, and highly concise title (3 to 5 words) that captures the core subject of this note. Do not repeat the first sentence. Return ONLY the plain title text, with no quotes, markdown formatting, or ending punctuation.
 
 Note:
 ${content.slice(0, 4000)}`;

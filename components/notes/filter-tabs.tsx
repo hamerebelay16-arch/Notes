@@ -7,8 +7,6 @@ import type { NoteFilter } from '@/utils/note-filters';
 
 const FILTERS: { key: NoteFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'all', label: 'All', icon: 'layers-outline' },
-  { key: 'pinned', label: 'Pinned', icon: 'pin-outline' },
-  { key: 'archived', label: 'Archived', icon: 'archive-outline' },
 ];
 
 interface FilterTabsProps {
